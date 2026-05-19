@@ -1,6 +1,11 @@
 import axios from "axios";
 
-const API_URL = import.meta.env.VITE_API_URL || "http://127.0.0.1:5000/api";
+const normalizeApiUrl = (url) => {
+  const trimmedUrl = url.replace(/\/+$/, "");
+  return trimmedUrl.endsWith("/api") ? trimmedUrl : `${trimmedUrl}/api`;
+};
+
+const API_URL = normalizeApiUrl(import.meta.env.VITE_API_URL || "http://127.0.0.1:5000");
 
 const AUTH_STORAGE_KEYS = {
   token: "bookworm_token",

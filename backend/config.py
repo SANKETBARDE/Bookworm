@@ -12,6 +12,11 @@ class Config:
     SUPABASE_ANON_KEY = os.getenv("SUPABASE_ANON_KEY")
 
     FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:5173")
+    CORS_ORIGINS = [
+        origin.strip().rstrip("/")
+        for origin in FRONTEND_URL.split(",")
+        if origin.strip()
+    ]
 
     MAX_CONTENT_LENGTH = 50 * 1024 * 1024  # 50 MB
 

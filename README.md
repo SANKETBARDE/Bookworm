@@ -163,9 +163,10 @@ Create a `.env` file inside the `backend` folder:
 
 ```env
 SUPABASE_URL=your_supabase_project_url
-SUPABASE_KEY=your_supabase_anon_or_service_key
-SUPABASE_BUCKET=books
-FLASK_ENV=development
+SUPABASE_SERVICE_ROLE_KEY=your_supabase_service_role_key
+SUPABASE_ANON_KEY=your_supabase_anon_key
+SECRET_KEY=change_this_to_a_long_random_string
+FRONTEND_URL=http://localhost:5173
 ```
 
 ### 7. Run Flask Backend
@@ -204,8 +205,6 @@ Create a `.env` file inside the `frontend` folder:
 
 ```env
 VITE_API_URL=http://127.0.0.1:5000
-VITE_SUPABASE_URL=your_supabase_project_url
-VITE_SUPABASE_ANON_KEY=your_supabase_anon_key
 ```
 
 ### 11. Run React Frontend
@@ -521,22 +520,13 @@ You can test the app by checking:
 
 ## 🌐 Deployment
 
-Recommended deployment options:
+This repo is configured for:
 
-### Frontend
+- Backend: Render web service
+- Frontend: Netlify static site
+- Database and storage: Supabase
 
-- Vercel
-- Netlify
-
-### Backend
-
-- Render
-- Railway
-- Fly.io
-
-### Database and Storage
-
-- Supabase
+See [DEPLOYMENT.md](DEPLOYMENT.md) for the exact Render and Netlify settings.
 
 ---
 
