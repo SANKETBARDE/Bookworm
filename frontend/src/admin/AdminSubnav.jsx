@@ -13,6 +13,7 @@ const adminLinks = [
 function AdminSubnav() {
   const location = useLocation();
   const navRef = useRef(null);
+  const navPressTimerRef = useRef(null);
   const [indicator, setIndicator] = useState({
     left: 0,
     visible: false,
@@ -47,6 +48,13 @@ function AdminSubnav() {
     }
   }, [positionIndicator]);
 
+  const releaseNavPress = useCallback(() => {
+    window.clearTimeout(navPressTimerRef.current);
+    navPressTimerRef.current = window.setTimeout(() => {
+      navRef.current?.classList.remove("is-pressing");
+    }, 180);
+  }, []);
+
   useEffect(() => {
     const frame = window.requestAnimationFrame(syncActiveIndicator);
     window.addEventListener("resize", syncActiveIndicator);
@@ -54,8 +62,20 @@ function AdminSubnav() {
     return () => {
       window.cancelAnimationFrame(frame);
       window.removeEventListener("resize", syncActiveIndicator);
+      window.clearTimeout(navPressTimerRef.current);
     };
   }, [location.pathname, syncActiveIndicator]);
+
+  const handlePointerDown = (event) => {
+    const nav = navRef.current;
+    const item = event.target.closest(".admin-subnav-item");
+
+    if (!nav || !item || !nav.contains(item)) return;
+
+    window.clearTimeout(navPressTimerRef.current);
+    nav.classList.add("is-pressing");
+    positionIndicator(item);
+  };
 
   const handlePointerOver = (event) => {
     const item = event.target.closest(".admin-subnav-item");
@@ -65,11 +85,19 @@ function AdminSubnav() {
     }
   };
 
+  const handlePointerLeave = () => {
+    releaseNavPress();
+    syncActiveIndicator();
+  };
+
   return (
     <nav
       className="admin-subnav"
-      onPointerLeave={syncActiveIndicator}
+      onPointerCancel={releaseNavPress}
+      onPointerDown={handlePointerDown}
+      onPointerLeave={handlePointerLeave}
       onPointerOver={handlePointerOver}
+      onPointerUp={releaseNavPress}
       ref={navRef}
       style={{
         "--admin-subnav-indicator-left": `${indicator.left}px`,

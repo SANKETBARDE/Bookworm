@@ -1,6 +1,22 @@
 import { useEffect, useState } from "react";
 import api from "../services/api";
+import AppDropdown from "../components/AppDropdown";
 import BookCard from "../components/BookCard";
+
+const languageOptions = [
+  { value: "", label: "All Languages" },
+  { value: "English", label: "English" },
+  { value: "Hindi", label: "Hindi" },
+  { value: "Kannada", label: "Kannada" },
+  { value: "Marathi", label: "Marathi" },
+];
+
+const sortOptions = [
+  { value: "newest", label: "Newest" },
+  { value: "most_read", label: "Most Read" },
+  { value: "most_downloaded", label: "Most Downloaded" },
+  { value: "top_rated", label: "Top Rated" },
+];
 
 function ExploreBooks() {
   const [books, setBooks] = useState([]);
@@ -73,33 +89,29 @@ function ExploreBooks() {
           onChange={handleChange}
         />
 
-        <select
-          name="category_id"
+        <AppDropdown
+          label="All Categories"
           value={filters.category_id}
-          onChange={handleChange}
-        >
-          <option value="">All Categories</option>
-          {categories.map((cat) => (
-            <option value={cat.id} key={cat.id}>
-              {cat.name}
-            </option>
-          ))}
-        </select>
+          options={[
+            { value: "", label: "All Categories" },
+            ...categories.map((cat) => ({ value: cat.id, label: cat.name })),
+          ]}
+          onChange={(value) => setFilters({ ...filters, category_id: value })}
+        />
 
-        <select name="language" value={filters.language} onChange={handleChange}>
-          <option value="">All Languages</option>
-          <option value="English">English</option>
-          <option value="Hindi">Hindi</option>
-          <option value="Kannada">Kannada</option>
-          <option value="Marathi">Marathi</option>
-        </select>
+        <AppDropdown
+          label="All Languages"
+          value={filters.language}
+          options={languageOptions}
+          onChange={(value) => setFilters({ ...filters, language: value })}
+        />
 
-        <select name="sort" value={filters.sort} onChange={handleChange}>
-          <option value="newest">Newest</option>
-          <option value="most_read">Most Read</option>
-          <option value="most_downloaded">Most Downloaded</option>
-          <option value="top_rated">Top Rated</option>
-        </select>
+        <AppDropdown
+          label="Sort Books"
+          value={filters.sort}
+          options={sortOptions}
+          onChange={(value) => setFilters({ ...filters, sort: value })}
+        />
 
         <button className="btn primary">Search</button>
       </form>

@@ -1,5 +1,13 @@
 import { useEffect, useState } from "react";
+import AppDropdown from "../components/AppDropdown";
 import api from "../services/api";
+
+const languageOptions = [
+  { value: "English", label: "English" },
+  { value: "Hindi", label: "Hindi" },
+  { value: "Kannada", label: "Kannada" },
+  { value: "Marathi", label: "Marathi" },
+];
 
 function BookRequests() {
   const [requests, setRequests] = useState([]);
@@ -76,12 +84,12 @@ function BookRequests() {
             onChange={handleChange}
           />
 
-          <select name="language" value={form.language} onChange={handleChange}>
-            <option value="English">English</option>
-            <option value="Hindi">Hindi</option>
-            <option value="Kannada">Kannada</option>
-            <option value="Marathi">Marathi</option>
-          </select>
+          <AppDropdown
+            label="Select Language"
+            value={form.language}
+            options={languageOptions}
+            onChange={(value) => setForm({ ...form, language: value })}
+          />
 
           <textarea
             name="description"

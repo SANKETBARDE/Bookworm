@@ -1,15 +1,16 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { BookOpen, Heart, Trash2 } from "lucide-react";
+import AppDropdown from "../components/AppDropdown";
 import api from "../services/api";
 
 const statusOptions = [
   { label: "All", value: "" },
-  { label: "To Be Read", value: "to_be_read" },
-  { label: "Reading", value: "reading" },
-  { label: "Completed", value: "completed" },
-  { label: "Paused", value: "paused" },
-  { label: "Dropped", value: "dropped" },
+  { label: "To Be Read", tone: "to_be_read", value: "to_be_read" },
+  { label: "Reading", tone: "reading", value: "reading" },
+  { label: "Completed", tone: "completed", value: "completed" },
+  { label: "Paused", tone: "paused", value: "paused" },
+  { label: "Dropped", tone: "dropped", value: "dropped" },
 ];
 
 const getStatusLabel = (value) =>
@@ -22,6 +23,7 @@ function MyLibrary() {
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
   const tabsRef = useRef(null);
+  const tabsPressTimerRef = useRef(null);
   const [tabIndicator, setTabIndicator] = useState({
     left: 0,
     visible: false,
@@ -85,6 +87,13 @@ function MyLibrary() {
     }
   }, [favoriteOnly, positionTabIndicator]);
 
+  const releaseTabsPress = useCallback(() => {
+    window.clearTimeout(tabsPressTimerRef.current);
+    tabsPressTimerRef.current = window.setTimeout(() => {
+      tabsRef.current?.classList.remove("is-pressing");
+    }, 180);
+  }, []);
+
   useEffect(() => {
     const frame = window.requestAnimationFrame(syncTabIndicator);
     window.addEventListener("resize", syncTabIndicator);
@@ -92,8 +101,20 @@ function MyLibrary() {
     return () => {
       window.cancelAnimationFrame(frame);
       window.removeEventListener("resize", syncTabIndicator);
+      window.clearTimeout(tabsPressTimerRef.current);
     };
   }, [status, favoriteOnly, syncTabIndicator]);
+
+  const handleTabPointerDown = (event) => {
+    const tabs = tabsRef.current;
+    const button = event.target.closest("button");
+
+    if (!tabs || !button || !tabs.contains(button)) return;
+
+    window.clearTimeout(tabsPressTimerRef.current);
+    tabs.classList.add("is-pressing");
+    positionTabIndicator(button);
+  };
 
   const handleTabPointerOver = (event) => {
     const button = event.target.closest("button");
@@ -104,6 +125,7 @@ function MyLibrary() {
   };
 
   const handleTabPointerLeave = () => {
+    releaseTabsPress();
     syncTabIndicator();
   };
 
@@ -134,8 +156,11 @@ function MyLibrary() {
 
       <div
         className="tabs library-tabs"
+        onPointerCancel={releaseTabsPress}
+        onPointerDown={handleTabPointerDown}
         onPointerLeave={handleTabPointerLeave}
         onPointerOver={handleTabPointerOver}
+        onPointerUp={releaseTabsPress}
         ref={tabsRef}
         style={{
           "--tab-indicator-left": `${tabIndicator.left}px`,
@@ -195,18 +220,12 @@ function MyLibrary() {
                       Read
                     </Link>
 
-                    <select
-                      onChange={(e) => updateItem(item, { status: e.target.value })}
+                    <AppDropdown
+                      label="Update Status"
                       value={item.status}
-                    >
-                      {statusOptions
-                        .filter((option) => option.value)
-                        .map((option) => (
-                          <option key={option.value} value={option.value}>
-                            {option.label}
-                          </option>
-                        ))}
-                    </select>
+                      options={statusOptions.filter((option) => option.value)}
+                      onChange={(value) => updateItem(item, { status: value })}
+                    />
 
                     <button
                       className={`btn-small ${item.is_favorite ? "primary" : ""}`}

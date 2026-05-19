@@ -9,6 +9,7 @@ function Navbar() {
   const loggedIn = isLoggedIn();
   const profile = getProfile();
   const navMainRef = useRef(null);
+  const navPressTimerRef = useRef(null);
   const [indicator, setIndicator] = useState({
     left: 0,
     visible: false,
@@ -51,6 +52,13 @@ function Navbar() {
     }
   }, [positionIndicator]);
 
+  const releaseNavPress = useCallback(() => {
+    window.clearTimeout(navPressTimerRef.current);
+    navPressTimerRef.current = window.setTimeout(() => {
+      navMainRef.current?.classList.remove("is-pressing");
+    }, 180);
+  }, []);
+
   useEffect(() => {
     const frame = window.requestAnimationFrame(syncActiveIndicator);
     window.addEventListener("resize", syncActiveIndicator);
@@ -58,8 +66,20 @@ function Navbar() {
     return () => {
       window.cancelAnimationFrame(frame);
       window.removeEventListener("resize", syncActiveIndicator);
+      window.clearTimeout(navPressTimerRef.current);
     };
   }, [location.pathname, loggedIn, syncActiveIndicator]);
+
+  const handleNavPointerDown = (event) => {
+    const navMain = navMainRef.current;
+    const item = event.target.closest(".nav-item");
+
+    if (!navMain || !item || !navMain.contains(item)) return;
+
+    window.clearTimeout(navPressTimerRef.current);
+    navMain.classList.add("is-pressing");
+    positionIndicator(item);
+  };
 
   const handleNavPointerOver = (event) => {
     const item = event.target.closest(".nav-item");
@@ -70,6 +90,7 @@ function Navbar() {
   };
 
   const handleNavPointerLeave = () => {
+    releaseNavPress();
     syncActiveIndicator();
   };
 
@@ -82,8 +103,11 @@ function Navbar() {
       <div className="nav-links" aria-label="Primary navigation">
         <div
           className="nav-main"
+          onPointerCancel={releaseNavPress}
+          onPointerDown={handleNavPointerDown}
           onPointerLeave={handleNavPointerLeave}
           onPointerOver={handleNavPointerOver}
+          onPointerUp={releaseNavPress}
           ref={navMainRef}
           style={{
             "--nav-indicator-left": `${indicator.left}px`,

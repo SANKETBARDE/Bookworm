@@ -2,6 +2,15 @@ import { useCallback, useEffect, useState } from "react";
 import { useNavigate, useParams, Link } from "react-router-dom";
 import api, { isLoggedIn } from "../services/api";
 import { Star, Download, Eye, BookmarkPlus } from "lucide-react";
+import AppDropdown from "../components/AppDropdown";
+
+const readingStatusOptions = [
+  { value: "to_be_read", label: "To Be Read", tone: "to_be_read" },
+  { value: "reading", label: "Reading", tone: "reading" },
+  { value: "completed", label: "Completed", tone: "completed" },
+  { value: "paused", label: "Paused", tone: "paused" },
+  { value: "dropped", label: "Dropped", tone: "dropped" },
+];
 
 function StarRating({ value, onChange, size = 22 }) {
   return (
@@ -253,16 +262,12 @@ function BookDetails() {
           </div>
 
           <div className="reading-list-box">
-            <select
+            <AppDropdown
+              label="Reading Status"
               value={readingStatus}
-              onChange={(e) => setReadingStatus(e.target.value)}
-            >
-              <option value="to_be_read">To Be Read</option>
-              <option value="reading">Reading</option>
-              <option value="completed">Completed</option>
-              <option value="paused">Paused</option>
-              <option value="dropped">Dropped</option>
-            </select>
+              options={readingStatusOptions}
+              onChange={setReadingStatus}
+            />
 
             <button className="btn" onClick={addToReadingList}>
               <BookmarkPlus size={16} />

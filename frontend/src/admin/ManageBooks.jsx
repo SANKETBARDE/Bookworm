@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
-import { BookOpen, CalendarDays, ChevronDown, Download, Edit3, Eye, Save, Tag, Trash2, UserRound, X } from "lucide-react";
+import { BookOpen, CalendarDays, Download, Edit3, Eye, Save, Tag, Trash2, UserRound, X } from "lucide-react";
 import AdminSubnav from "./AdminSubnav";
+import AppDropdown from "../components/AppDropdown";
 import api from "../services/api";
 
 const STATUS_OPTIONS = [
@@ -17,51 +18,6 @@ const LANGUAGE_OPTIONS = [
   { value: "Kannada", label: "Kannada" },
   { value: "Marathi", label: "Marathi" },
 ];
-
-function AdminDropdown({ label, value, options, onChange }) {
-  const [isOpen, setIsOpen] = useState(false);
-  const selectedOption = options.find((option) => option.value === value) || options[0];
-
-  return (
-    <div
-      className="admin-dropdown"
-      onBlur={(e) => {
-        if (!e.currentTarget.contains(e.relatedTarget)) {
-          setIsOpen(false);
-        }
-      }}
-    >
-      <button
-        className="admin-dropdown-trigger"
-        type="button"
-        onClick={() => setIsOpen((current) => !current)}
-        aria-expanded={isOpen}
-        aria-label={label}
-      >
-        <span>{selectedOption?.label || label}</span>
-        <ChevronDown size={18} />
-      </button>
-
-      {isOpen && (
-        <div className="admin-dropdown-menu">
-          {options.map((option) => (
-            <button
-              className={`admin-dropdown-option ${option.value === value ? "selected" : ""} ${option.tone ? `option-${option.tone}` : ""}`}
-              key={option.value}
-              type="button"
-              onClick={() => {
-                onChange(option.value);
-                setIsOpen(false);
-              }}
-            >
-              {option.label}
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
 
 function BookCover({ book }) {
   const [hasImageError, setHasImageError] = useState(false);
@@ -240,7 +196,7 @@ function ManageBooks() {
       </div>
 
       <div className="filter-bar admin-books-filter">
-        <AdminDropdown
+        <AppDropdown
           label="Filter by status"
           value={status}
           options={STATUS_OPTIONS}
@@ -375,7 +331,7 @@ function ManageBooks() {
             <div className="admin-edit-book-grid">
               <label className="field">
                 <span>Category</span>
-                <AdminDropdown
+                <AppDropdown
                   label="Select Category"
                   value={editForm.category_id}
                   options={[
@@ -394,7 +350,7 @@ function ManageBooks() {
 
               <label className="field">
                 <span>Language</span>
-                <AdminDropdown
+                <AppDropdown
                   label="Select Language"
                   value={editForm.language}
                   options={LANGUAGE_OPTIONS}

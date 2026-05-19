@@ -1,8 +1,16 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { FileText, ImagePlus, Upload } from "lucide-react";
+import AppDropdown from "../components/AppDropdown";
 import api from "../services/api";
 
 const normalizeAuthorKey = (author) => author.toLowerCase().replace(/[^a-z0-9]/g, "");
+
+const languageOptions = [
+  { value: "English", label: "English" },
+  { value: "Hindi", label: "Hindi" },
+  { value: "Kannada", label: "Kannada" },
+  { value: "Marathi", label: "Marathi" },
+];
 
 function UploadBook() {
   const [categories, setCategories] = useState([]);
@@ -21,6 +29,8 @@ function UploadBook() {
 
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
+  const [authorSuggestionOpen, setAuthorSuggestionOpen] = useState(false);
+  const [highlightedAuthorIndex, setHighlightedAuthorIndex] = useState(0);
 
   const authorMap = useMemo(() => {
     return authors.reduce((map, author) => {
@@ -28,6 +38,31 @@ function UploadBook() {
       return map;
     }, new Map());
   }, [authors]);
+
+  const authorSuggestions = useMemo(() => {
+    const query = form.author.trim();
+    const normalizedQuery = normalizeAuthorKey(query);
+
+    if (!normalizedQuery) return [];
+
+    return authors
+      .filter((author) => normalizeAuthorKey(author).includes(normalizedQuery))
+      .sort((first, second) => {
+        const firstKey = normalizeAuthorKey(first);
+        const secondKey = normalizeAuthorKey(second);
+        const firstStarts = firstKey.startsWith(normalizedQuery);
+        const secondStarts = secondKey.startsWith(normalizedQuery);
+
+        if (firstStarts !== secondStarts) {
+          return firstStarts ? -1 : 1;
+        }
+
+        return first.localeCompare(second);
+      })
+      .slice(0, 7);
+  }, [authors, form.author]);
+
+  const showAuthorSuggestions = authorSuggestionOpen && authorSuggestions.length > 0;
 
   const getCanonicalAuthor = useCallback(
     (author) => {
@@ -62,6 +97,12 @@ function UploadBook() {
     });
   }, [fetchAuthors, fetchCategories]);
 
+  useEffect(() => {
+    if (highlightedAuthorIndex >= authorSuggestions.length) {
+      setHighlightedAuthorIndex(0);
+    }
+  }, [authorSuggestions.length, highlightedAuthorIndex]);
+
   const handleChange = (e) => {
     const { name, value, files } = e.target;
 
@@ -78,11 +119,55 @@ function UploadBook() {
     }
   };
 
+  const handleAuthorChange = (e) => {
+    setForm({
+      ...form,
+      author: e.target.value,
+    });
+    setAuthorSuggestionOpen(Boolean(e.target.value.trim()));
+    setHighlightedAuthorIndex(0);
+  };
+
   const handleAuthorBlur = () => {
     setForm({
       ...form,
       author: getCanonicalAuthor(form.author),
     });
+    setAuthorSuggestionOpen(false);
+  };
+
+  const selectAuthor = (author) => {
+    setForm({
+      ...form,
+      author,
+    });
+    setAuthorSuggestionOpen(false);
+    setHighlightedAuthorIndex(0);
+  };
+
+  const handleAuthorKeyDown = (e) => {
+    if (!showAuthorSuggestions) return;
+
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      setHighlightedAuthorIndex((current) => (current + 1) % authorSuggestions.length);
+    }
+
+    if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setHighlightedAuthorIndex((current) =>
+        current === 0 ? authorSuggestions.length - 1 : current - 1
+      );
+    }
+
+    if (e.key === "Enter") {
+      e.preventDefault();
+      selectAuthor(authorSuggestions[highlightedAuthorIndex]);
+    }
+
+    if (e.key === "Escape") {
+      setAuthorSuggestionOpen(false);
+    }
   };
 
   const handleSubmit = async (e) => {
@@ -127,6 +212,7 @@ function UploadBook() {
         pdf: null,
         cover: null,
       });
+      setAuthorSuggestionOpen(false);
       fetchAuthors();
     } catch (error) {
       setMessage(error.response?.data?.message || "Upload failed");
@@ -162,49 +248,72 @@ function UploadBook() {
               />
             </label>
 
-            <label className="field">
+            <label className="field author-field">
               <span>Author</span>
-              <input
-                type="text"
-                name="author"
-                placeholder="Author Name"
-                list="author-suggestions"
-                value={form.author}
-                onChange={handleChange}
-                onBlur={handleAuthorBlur}
-              />
+              <div className="author-autocomplete">
+                <input
+                  aria-autocomplete="list"
+                  aria-controls="author-suggestion-list"
+                  aria-expanded={showAuthorSuggestions}
+                  autoComplete="off"
+                  name="author"
+                  onBlur={handleAuthorBlur}
+                  onChange={handleAuthorChange}
+                  onFocus={() => setAuthorSuggestionOpen(Boolean(form.author.trim()))}
+                  onKeyDown={handleAuthorKeyDown}
+                  placeholder="Author Name"
+                  role="combobox"
+                  type="text"
+                  value={form.author}
+                />
+
+                {showAuthorSuggestions && (
+                  <div className="author-suggestion-menu" id="author-suggestion-list" role="listbox">
+                    {authorSuggestions.map((author, index) => (
+                      <button
+                        aria-selected={index === highlightedAuthorIndex}
+                        className={`author-suggestion-option${index === highlightedAuthorIndex ? " highlighted" : ""}`}
+                        key={author}
+                        onMouseDown={(event) => {
+                          event.preventDefault();
+                          selectAuthor(author);
+                        }}
+                        role="option"
+                        type="button"
+                      >
+                        <span className="author-suggestion-name">{author}</span>
+                        {normalizeAuthorKey(author) === normalizeAuthorKey(form.author) && (
+                          <span className="author-suggestion-meta">Match</span>
+                        )}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
             </label>
-            <datalist id="author-suggestions">
-              {authors.map((author) => (
-                <option key={author} value={author} />
-              ))}
-            </datalist>
 
             <div className="upload-grid">
               <label className="field">
                 <span>Category</span>
-                <select
-                  name="category_id"
+                <AppDropdown
+                  label="Select Category"
                   value={form.category_id}
-                  onChange={handleChange}
-                >
-                  <option value="">Select Category</option>
-                  {categories.map((cat) => (
-                    <option value={cat.id} key={cat.id}>
-                      {cat.name}
-                    </option>
-                  ))}
-                </select>
+                  options={[
+                    { value: "", label: "Select Category" },
+                    ...categories.map((cat) => ({ value: cat.id, label: cat.name })),
+                  ]}
+                  onChange={(value) => setForm({ ...form, category_id: value })}
+                />
               </label>
 
               <label className="field">
                 <span>Language</span>
-                <select name="language" value={form.language} onChange={handleChange}>
-                  <option value="English">English</option>
-                  <option value="Hindi">Hindi</option>
-                  <option value="Kannada">Kannada</option>
-                  <option value="Marathi">Marathi</option>
-                </select>
+                <AppDropdown
+                  label="Select Language"
+                  value={form.language}
+                  options={languageOptions}
+                  onChange={(value) => setForm({ ...form, language: value })}
+                />
               </label>
             </div>
 

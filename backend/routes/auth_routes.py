@@ -117,6 +117,55 @@ def login():
         return error_response(message, 401)
 
 
+@auth_bp.route("/refresh", methods=["POST"])
+def refresh_session():
+    try:
+        data = request.get_json(silent=True) or {}
+        refresh_token = data.get("refresh_token")
+
+        if not refresh_token:
+            return error_response("Refresh token missing", 400)
+
+        response = supabase.auth.refresh_session(refresh_token)
+        session = getattr(response, "session", None)
+        user = getattr(response, "user", None)
+
+        if not session:
+            return error_response("Session refresh failed", 401)
+
+        access_token = get_nested_value(session, "access_token")
+        next_refresh_token = get_nested_value(session, "refresh_token") or refresh_token
+
+        if not access_token:
+            return error_response("Session refresh failed", 401)
+
+        user_id = get_user_id_from_auth_user(user)
+        email = get_user_email_from_auth_user(user)
+
+        if not user_id:
+            auth_user = supabase.auth.get_user(access_token)
+            user_id = get_user_id_from_auth_user(auth_user)
+            email = get_user_email_from_auth_user(auth_user)
+
+        if not user_id:
+            return error_response("Session refresh failed", 401)
+
+        profile_response = supabase.table("profiles").select("*").eq("id", user_id).single().execute()
+
+        return success_response("Session refreshed", {
+            "access_token": access_token,
+            "refresh_token": next_refresh_token,
+            "user": {
+                "id": user_id,
+                "email": email
+            },
+            "profile": profile_response.data
+        })
+
+    except Exception:
+        return error_response("Invalid or expired refresh token", 401)
+
+
 @auth_bp.route("/me", methods=["GET"])
 @login_required
 def me():
