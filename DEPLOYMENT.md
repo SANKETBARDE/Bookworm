@@ -9,7 +9,7 @@ Use `render.yaml` from the repo root, or create a Render Web Service manually wi
 - Root directory: `backend`
 - Runtime: Python
 - Build command: `pip install -r requirements.txt`
-- Start command: `gunicorn wsgi:app`
+- Start command: `python -m gunicorn wsgi:app`
 - Health check path: `/`
 
 Set these Render environment variables:
