@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import AdminSubnav from "./AdminSubnav";
 import api from "../services/api";
 
 function PendingBooks() {
@@ -41,7 +42,11 @@ function PendingBooks() {
 
   return (
     <div className="page">
-      <h1>Pending Books</h1>
+      <AdminSubnav />
+
+      <div className="page-header">
+        <h1>Pending Books</h1>
+      </div>
 
       <div className="list">
         {books.length > 0 ? (

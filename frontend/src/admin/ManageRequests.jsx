@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import AdminSubnav from "./AdminSubnav";
 import api from "../services/api";
 
 function ManageRequests() {
@@ -28,7 +29,11 @@ function ManageRequests() {
 
   return (
     <div className="page">
-      <h1>Manage Book Requests</h1>
+      <AdminSubnav />
+
+      <div className="page-header">
+        <h1>Manage Book Requests</h1>
+      </div>
 
       <div className="list">
         {requests.map((req) => (

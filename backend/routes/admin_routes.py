@@ -1,7 +1,9 @@
 from flask import Blueprint, request, g
 from services.supabase_client import supabase
+from services.storage_service import upload_file_to_supabase
 from utils.decorators import admin_required
 from utils.helpers import success_response, error_response
+from utils.validators import is_image
 
 admin_bp = Blueprint("admin", __name__)
 
@@ -67,7 +69,7 @@ def all_books():
         status = request.args.get("status")
 
         query = supabase.table("books").select(
-            "*, profiles(full_name, email), categories(name)"
+            "*, profiles!books_uploaded_by_fkey(full_name, email), categories(name)"
         )
 
         if status:
@@ -76,6 +78,75 @@ def all_books():
         response = query.order("created_at", desc=True).execute()
 
         return success_response("Books fetched", response.data)
+
+    except Exception as e:
+        return error_response(str(e), 400)
+
+
+@admin_bp.route("/books/<book_id>", methods=["PUT"])
+@admin_required
+def update_book(book_id):
+    try:
+        data = request.form.to_dict() if request.form else request.get_json(silent=True) or {}
+        cover_file = request.files.get("cover")
+        update_data = {}
+
+        if "title" in data:
+            title = (data.get("title") or "").strip()
+            if not title:
+                return error_response("Book title is required", 400)
+            update_data["title"] = title
+
+        if "author" in data:
+            update_data["author"] = (data.get("author") or "").strip()
+
+        if "category_id" in data:
+            update_data["category_id"] = data.get("category_id") or None
+
+        if "language" in data:
+            update_data["language"] = (data.get("language") or "").strip() or "English"
+
+        if "description" in data:
+            update_data["description"] = data.get("description") or None
+
+        if "tags" in data:
+            tags = data.get("tags")
+
+            if isinstance(tags, str):
+                update_data["tags"] = [tag.strip() for tag in tags.split(",") if tag.strip()]
+            elif isinstance(tags, list):
+                update_data["tags"] = [str(tag).strip() for tag in tags if str(tag).strip()]
+            else:
+                update_data["tags"] = []
+
+        if cover_file:
+            if not is_image(cover_file.filename):
+                return error_response("Cover must be png, jpg, jpeg, or webp", 400)
+
+            cover_upload = upload_file_to_supabase(
+                cover_file,
+                "book-covers",
+                "covers"
+            )
+
+            if not cover_upload["success"]:
+                return error_response(cover_upload["message"], 400)
+
+            update_data["cover_image_url"] = cover_upload["url"]
+
+        if not update_data:
+            return error_response("No book details provided", 400)
+
+        response = supabase.table("books").update(update_data).eq("id", book_id).execute()
+
+        log_admin_action(
+            "update_book",
+            "book",
+            book_id,
+            "Admin updated book details"
+        )
+
+        return success_response("Book details updated", response.data)
 
     except Exception as e:
         return error_response(str(e), 400)
