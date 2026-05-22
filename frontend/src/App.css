@@ -2295,6 +2295,19 @@ button.star:hover ~ button.star {
     grid-template-columns: 1fr;
   }
 
+  .explore-books-filter {
+    align-items: stretch;
+  }
+
+  .explore-books-filter .app-dropdown {
+    z-index: auto;
+  }
+
+  .explore-books-filter .app-dropdown-menu {
+    position: static;
+    margin-top: 8px;
+  }
+
   .upload-page {
     min-height: auto;
     align-items: start;

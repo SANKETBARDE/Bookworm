@@ -30,18 +30,22 @@ function ExploreBooks() {
   });
 
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
 
-  const fetchBooks = async () => {
+  const fetchBooks = async (activeFilters = filters) => {
     setLoading(true);
+    setError("");
 
     try {
       const response = await api.get("/books", {
-        params: filters,
+        params: activeFilters,
       });
 
       setBooks(response.data.data || []);
     } catch (error) {
       console.log(error);
+      setBooks([]);
+      setError(error.response?.data?.message || "Failed to filter books.");
     } finally {
       setLoading(false);
     }
@@ -58,19 +62,30 @@ function ExploreBooks() {
 
   useEffect(() => {
     fetchCategories();
-    fetchBooks();
   }, []);
 
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      fetchBooks(filters);
+    }, 250);
+
+    return () => clearTimeout(timer);
+  }, [filters]);
+
+  const updateFilter = (name, value) => {
+    setFilters((currentFilters) => ({
+      ...currentFilters,
+      [name]: value,
+    }));
+  };
+
   const handleChange = (e) => {
-    setFilters({
-      ...filters,
-      [e.target.name]: e.target.value,
-    });
+    updateFilter(e.target.name, e.target.value);
   };
 
   const handleSearch = (e) => {
     e.preventDefault();
-    fetchBooks();
+    fetchBooks(filters);
   };
 
   return (
@@ -80,7 +95,7 @@ function ExploreBooks() {
         <p>Search and discover books uploaded by the community.</p>
       </div>
 
-      <form className="filter-bar" onSubmit={handleSearch}>
+      <form className="filter-bar explore-books-filter" onSubmit={handleSearch}>
         <input
           type="text"
           name="search"
@@ -96,25 +111,27 @@ function ExploreBooks() {
             { value: "", label: "All Categories" },
             ...categories.map((cat) => ({ value: cat.id, label: cat.name })),
           ]}
-          onChange={(value) => setFilters({ ...filters, category_id: value })}
+          onChange={(value) => updateFilter("category_id", value)}
         />
 
         <AppDropdown
           label="All Languages"
           value={filters.language}
           options={languageOptions}
-          onChange={(value) => setFilters({ ...filters, language: value })}
+          onChange={(value) => updateFilter("language", value)}
         />
 
         <AppDropdown
           label="Sort Books"
           value={filters.sort}
           options={sortOptions}
-          onChange={(value) => setFilters({ ...filters, sort: value })}
+          onChange={(value) => updateFilter("sort", value)}
         />
 
         <button className="btn primary">Search</button>
       </form>
+
+      {error && <p className="alert">{error}</p>}
 
       {loading ? (
         <p>Loading books...</p>

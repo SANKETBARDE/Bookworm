@@ -42,6 +42,13 @@ def canonical_author_name(author):
     return author
 
 
+def get_category_name(category_id):
+    response = supabase.table("categories").select("name").eq("id", category_id).limit(1).execute()
+    category = response.data[0] if response.data else None
+
+    return category.get("name") if category else None
+
+
 @book_bp.route("", methods=["GET"])
 def get_books():
     try:
@@ -58,7 +65,12 @@ def get_books():
             )
 
         if category_id:
-            query = query.eq("category_id", category_id)
+            category_name = get_category_name(category_id)
+
+            if not category_name:
+                return success_response("Books fetched successfully", [])
+
+            query = query.eq("category_name", category_name)
 
         if language:
             query = query.eq("language", language)
