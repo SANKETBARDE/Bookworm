@@ -222,6 +222,33 @@ def remove_book(book_id):
         return error_response(str(e), 400)
 
 
+@admin_bp.route("/books/<book_id>/recover", methods=["PUT"])
+@admin_required
+def recover_book(book_id):
+    try:
+        response = supabase.table("books").update({
+            "status": "approved",
+            "approved_by": g.user["id"],
+            "approved_at": "now()",
+            "rejection_reason": None
+        }).eq("id", book_id).eq("status", "removed").execute()
+
+        if not response.data:
+            return error_response("Only removed books can be recovered", 400)
+
+        log_admin_action(
+            "recover_book",
+            "book",
+            book_id,
+            "Admin recovered a removed book"
+        )
+
+        return success_response("Book recovered", response.data)
+
+    except Exception as e:
+        return error_response(str(e), 400)
+
+
 @admin_bp.route("/users", methods=["GET"])
 @admin_required
 def get_users():

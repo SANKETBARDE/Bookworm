@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { BookOpen, CalendarDays, Download, Edit3, Eye, Save, Tag, Trash2, UserRound, X } from "lucide-react";
+import { BookOpen, CalendarDays, Download, Edit3, Eye, RotateCcw, Save, Tag, Trash2, UserRound, X } from "lucide-react";
 import AdminSubnav from "./AdminSubnav";
 import AppDropdown from "../components/AppDropdown";
 import api from "../services/api";
@@ -186,6 +186,15 @@ function ManageBooks() {
     }
   };
 
+  const recoverBook = async (id) => {
+    try {
+      await api.put(`/admin/books/${id}/recover`);
+      fetchBooks();
+    } catch (error) {
+      alert(error.response?.data?.message || "Failed to recover");
+    }
+  };
+
   return (
     <div className="page">
       <AdminSubnav />
@@ -264,7 +273,10 @@ function ManageBooks() {
                     Remove
                   </button>
                 ) : (
-                  <span className="admin-book-note">Removed</span>
+                  <button className="btn-small primary" onClick={() => recoverBook(book.id)}>
+                    <RotateCcw size={16} />
+                    Recover
+                  </button>
                 )}
               </div>
             </div>
