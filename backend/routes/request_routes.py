@@ -1,35 +1,45 @@
-from flask import Blueprint, request, g
+from fastapi import APIRouter, Depends
+from pydantic import BaseModel
+from typing import Optional
 from services.supabase_client import supabase
-from utils.decorators import login_required
+from utils.dependencies import get_current_user
 from utils.helpers import success_response, error_response
 
-request_bp = Blueprint("book_requests", __name__)
+router = APIRouter()
 
 
-@request_bp.route("", methods=["POST"])
-@login_required
-def create_book_request():
+class BookRequestData(BaseModel):
+    title: str
+    author: Optional[str] = None
+    category_id: Optional[str] = None
+    language: Optional[str] = None
+    description: Optional[str] = None
+    external_link: Optional[str] = None
+
+
+class UpdateBookRequestData(BaseModel):
+    title: Optional[str] = None
+    author: Optional[str] = None
+    category_id: Optional[str] = None
+    language: Optional[str] = None
+    description: Optional[str] = None
+    external_link: Optional[str] = None
+
+
+@router.post("")
+def create_book_request(data: BookRequestData, current_user: dict = Depends(get_current_user)):
     try:
-        data = request.get_json()
-
-        title = data.get("title")
-        author = data.get("author")
-        category_id = data.get("category_id")
-        language = data.get("language")
-        description = data.get("description")
-        external_link = data.get("external_link")
-
-        if not title:
+        if not data.title:
             return error_response("Book title is required", 400)
 
         request_data = {
-            "user_id": g.user["id"],
-            "title": title,
-            "author": author,
-            "category_id": category_id,
-            "language": language,
-            "description": description,
-            "external_link": external_link,
+            "user_id": current_user["id"],
+            "title": data.title,
+            "author": data.author,
+            "category_id": data.category_id,
+            "language": data.language,
+            "description": data.description,
+            "external_link": data.external_link,
             "status": "pending"
         }
 
@@ -41,13 +51,12 @@ def create_book_request():
         return error_response(str(e), 400)
 
 
-@request_bp.route("/my", methods=["GET"])
-@login_required
-def my_book_requests():
+@router.get("/my")
+def my_book_requests(current_user: dict = Depends(get_current_user)):
     try:
         response = supabase.table("book_requests").select(
             "*, categories(name)"
-        ).eq("user_id", g.user["id"]).order("created_at", desc=True).execute()
+        ).eq("user_id", current_user["id"]).order("created_at", desc=True).execute()
 
         return success_response("My book requests fetched", response.data)
 
@@ -55,19 +64,17 @@ def my_book_requests():
         return error_response(str(e), 400)
 
 
-@request_bp.route("/<request_id>", methods=["PUT"])
-@login_required
-def update_my_request(request_id):
+@router.put("/{request_id}")
+def update_my_request(request_id: str, data: UpdateBookRequestData, current_user: dict = Depends(get_current_user)):
     try:
-        data = request.get_json()
-
         update_data = {}
+        data_dict = data.dict(exclude_unset=True)
 
         for field in ["title", "author", "category_id", "language", "description", "external_link"]:
-            if field in data:
-                update_data[field] = data[field]
+            if field in data_dict:
+                update_data[field] = data_dict[field]
 
-        response = supabase.table("book_requests").update(update_data).eq("id", request_id).eq("user_id", g.user["id"]).eq("status", "pending").execute()
+        response = supabase.table("book_requests").update(update_data).eq("id", request_id).eq("user_id", current_user["id"]).eq("status", "pending").execute()
 
         return success_response("Book request updated", response.data)
 
@@ -75,11 +82,10 @@ def update_my_request(request_id):
         return error_response(str(e), 400)
 
 
-@request_bp.route("/<request_id>", methods=["DELETE"])
-@login_required
-def delete_my_request(request_id):
+@router.delete("/{request_id}")
+def delete_my_request(request_id: str, current_user: dict = Depends(get_current_user)):
     try:
-        response = supabase.table("book_requests").delete().eq("id", request_id).eq("user_id", g.user["id"]).eq("status", "pending").execute()
+        response = supabase.table("book_requests").delete().eq("id", request_id).eq("user_id", current_user["id"]).eq("status", "pending").execute()
 
         return success_response("Book request deleted", response.data)
 

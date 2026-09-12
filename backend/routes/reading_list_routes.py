@@ -1,29 +1,35 @@
-from flask import Blueprint, request, g
+from fastapi import APIRouter, Depends, Query
+from pydantic import BaseModel
+from typing import Optional
 from services.supabase_client import supabase
-from utils.decorators import login_required
+from utils.dependencies import get_current_user
 from utils.helpers import success_response, error_response
 
-reading_list_bp = Blueprint("reading_list", __name__)
+router = APIRouter()
 
 
-@reading_list_bp.route("", methods=["POST"])
-@login_required
-def add_to_reading_list():
+class AddToReadingListData(BaseModel):
+    book_id: str
+    status: str = "to_be_read"
+    is_favorite: bool = False
+
+
+class UpdateReadingListData(BaseModel):
+    status: Optional[str] = None
+    is_favorite: Optional[bool] = None
+
+
+@router.post("")
+def add_to_reading_list(data: AddToReadingListData, current_user: dict = Depends(get_current_user)):
     try:
-        data = request.get_json()
-
-        book_id = data.get("book_id")
-        status = data.get("status", "to_be_read")
-        is_favorite = data.get("is_favorite", False)
-
-        if not book_id:
+        if not data.book_id:
             return error_response("book_id is required", 400)
 
         reading_data = {
-            "user_id": g.user["id"],
-            "book_id": book_id,
-            "status": status,
-            "is_favorite": is_favorite
+            "user_id": current_user["id"],
+            "book_id": data.book_id,
+            "status": data.status,
+            "is_favorite": data.is_favorite
         }
 
         response = supabase.table("reading_list").upsert(
@@ -37,16 +43,16 @@ def add_to_reading_list():
         return error_response(str(e), 400)
 
 
-@reading_list_bp.route("", methods=["GET"])
-@login_required
-def get_reading_list():
+@router.get("")
+def get_reading_list(
+    status: Optional[str] = Query(None),
+    favorite: Optional[str] = Query(None),
+    current_user: dict = Depends(get_current_user)
+):
     try:
-        status = request.args.get("status")
-        favorite = request.args.get("favorite")
-
         query = supabase.table("reading_list").select(
             "*, books(title, author, cover_image_url, average_rating, pdf_url)"
-        ).eq("user_id", g.user["id"])
+        ).eq("user_id", current_user["id"])
 
         if status:
             query = query.eq("status", status)
@@ -62,24 +68,21 @@ def get_reading_list():
         return error_response(str(e), 400)
 
 
-@reading_list_bp.route("/<item_id>", methods=["PUT"])
-@login_required
-def update_reading_list_item(item_id):
+@router.put("/{item_id}")
+def update_reading_list_item(item_id: str, data: UpdateReadingListData, current_user: dict = Depends(get_current_user)):
     try:
-        data = request.get_json()
-
         update_data = {}
 
-        if "status" in data:
-            update_data["status"] = data["status"]
+        if data.status is not None:
+            update_data["status"] = data.status
 
-        if "is_favorite" in data:
-            update_data["is_favorite"] = data["is_favorite"]
+        if data.is_favorite is not None:
+            update_data["is_favorite"] = data.is_favorite
 
         if not update_data:
             return error_response("No valid fields to update", 400)
 
-        response = supabase.table("reading_list").update(update_data).eq("id", item_id).eq("user_id", g.user["id"]).execute()
+        response = supabase.table("reading_list").update(update_data).eq("id", item_id).eq("user_id", current_user["id"]).execute()
 
         return success_response("Reading list updated", response.data)
 
@@ -87,11 +90,10 @@ def update_reading_list_item(item_id):
         return error_response(str(e), 400)
 
 
-@reading_list_bp.route("/<item_id>", methods=["DELETE"])
-@login_required
-def remove_from_reading_list(item_id):
+@router.delete("/{item_id}")
+def remove_from_reading_list(item_id: str, current_user: dict = Depends(get_current_user)):
     try:
-        response = supabase.table("reading_list").delete().eq("id", item_id).eq("user_id", g.user["id"]).execute()
+        response = supabase.table("reading_list").delete().eq("id", item_id).eq("user_id", current_user["id"]).execute()
 
         return success_response("Removed from reading list", response.data)
 

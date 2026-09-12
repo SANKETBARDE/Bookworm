@@ -1,17 +1,19 @@
-from flask import Blueprint, request, g
+from fastapi import APIRouter, Depends, Request, Form, Query
+from pydantic import BaseModel
+from typing import Optional, List, Union
 from services.supabase_client import supabase
 from services.storage_service import upload_file_to_supabase
-from utils.decorators import admin_required
+from utils.dependencies import get_admin_user
 from utils.helpers import success_response, error_response
 from utils.validators import is_image
 
-admin_bp = Blueprint("admin", __name__)
+router = APIRouter()
 
 
-def log_admin_action(action_type, target_type=None, target_id=None, description=None):
+def log_admin_action(admin_id, action_type, target_type=None, target_id=None, description=None):
     try:
         supabase.table("admin_actions").insert({
-            "admin_id": g.user["id"],
+            "admin_id": admin_id,
             "action_type": action_type,
             "target_type": target_type,
             "target_id": target_id,
@@ -21,9 +23,8 @@ def log_admin_action(action_type, target_type=None, target_id=None, description=
         pass
 
 
-@admin_bp.route("/dashboard", methods=["GET"])
-@admin_required
-def dashboard():
+@router.get("/dashboard")
+def dashboard(admin_user: dict = Depends(get_admin_user)):
     try:
         users = supabase.table("profiles").select("id").execute()
         books = supabase.table("books").select("id,status").execute()
@@ -50,9 +51,8 @@ def dashboard():
         return error_response(str(e), 400)
 
 
-@admin_bp.route("/pending-books", methods=["GET"])
-@admin_required
-def pending_books():
+@router.get("/pending-books")
+def pending_books(admin_user: dict = Depends(get_admin_user)):
     try:
         response = supabase.table("pending_books_view").select("*").order("created_at", desc=True).execute()
 
@@ -62,12 +62,9 @@ def pending_books():
         return error_response(str(e), 400)
 
 
-@admin_bp.route("/books", methods=["GET"])
-@admin_required
-def all_books():
+@router.get("/books")
+def all_books(status: Optional[str] = Query(None), admin_user: dict = Depends(get_admin_user)):
     try:
-        status = request.args.get("status")
-
         query = supabase.table("books").select(
             "*, profiles!books_uploaded_by_fkey(full_name, email), categories(name)"
         )
@@ -83,12 +80,21 @@ def all_books():
         return error_response(str(e), 400)
 
 
-@admin_bp.route("/books/<book_id>", methods=["PUT"])
-@admin_required
-def update_book(book_id):
+@router.put("/books/{book_id}")
+async def update_book(book_id: str, request: Request, admin_user: dict = Depends(get_admin_user)):
     try:
-        data = request.form.to_dict() if request.form else request.get_json(silent=True) or {}
-        cover_file = request.files.get("cover")
+        content_type = request.headers.get("content-type", "")
+        if "multipart/form-data" in content_type:
+            form_data = await request.form()
+            data = dict(form_data)
+            cover_file = form_data.get("cover")
+        else:
+            try:
+                data = await request.json()
+            except:
+                data = {}
+            cover_file = None
+            
         update_data = {}
 
         if "title" in data:
@@ -119,7 +125,7 @@ def update_book(book_id):
             else:
                 update_data["tags"] = []
 
-        if cover_file:
+        if cover_file and hasattr(cover_file, "filename") and cover_file.filename:
             if not is_image(cover_file.filename):
                 return error_response("Cover must be png, jpg, jpeg, or webp", 400)
 
@@ -140,6 +146,7 @@ def update_book(book_id):
         response = supabase.table("books").update(update_data).eq("id", book_id).execute()
 
         log_admin_action(
+            admin_user["id"],
             "update_book",
             "book",
             book_id,
@@ -152,18 +159,18 @@ def update_book(book_id):
         return error_response(str(e), 400)
 
 
-@admin_bp.route("/books/<book_id>/approve", methods=["PUT"])
-@admin_required
-def approve_book(book_id):
+@router.put("/books/{book_id}/approve")
+def approve_book(book_id: str, admin_user: dict = Depends(get_admin_user)):
     try:
         response = supabase.table("books").update({
             "status": "approved",
-            "approved_by": g.user["id"],
+            "approved_by": admin_user["id"],
             "approved_at": "now()",
             "rejection_reason": None
         }).eq("id", book_id).execute()
 
         log_admin_action(
+            admin_user["id"],
             "approve_book",
             "book",
             book_id,
@@ -176,12 +183,13 @@ def approve_book(book_id):
         return error_response(str(e), 400)
 
 
-@admin_bp.route("/books/<book_id>/reject", methods=["PUT"])
-@admin_required
-def reject_book(book_id):
+class RejectBookData(BaseModel):
+    reason: str = "Rejected by admin"
+
+@router.put("/books/{book_id}/reject")
+def reject_book(book_id: str, data: RejectBookData, admin_user: dict = Depends(get_admin_user)):
     try:
-        data = request.get_json() or {}
-        reason = data.get("reason", "Rejected by admin")
+        reason = data.reason
 
         response = supabase.table("books").update({
             "status": "rejected",
@@ -189,6 +197,7 @@ def reject_book(book_id):
         }).eq("id", book_id).execute()
 
         log_admin_action(
+            admin_user["id"],
             "reject_book",
             "book",
             book_id,
@@ -201,15 +210,15 @@ def reject_book(book_id):
         return error_response(str(e), 400)
 
 
-@admin_bp.route("/books/<book_id>/remove", methods=["PUT"])
-@admin_required
-def remove_book(book_id):
+@router.put("/books/{book_id}/remove")
+def remove_book(book_id: str, admin_user: dict = Depends(get_admin_user)):
     try:
         response = supabase.table("books").update({
             "status": "removed"
         }).eq("id", book_id).execute()
 
         log_admin_action(
+            admin_user["id"],
             "remove_book",
             "book",
             book_id,
@@ -222,13 +231,12 @@ def remove_book(book_id):
         return error_response(str(e), 400)
 
 
-@admin_bp.route("/books/<book_id>/recover", methods=["PUT"])
-@admin_required
-def recover_book(book_id):
+@router.put("/books/{book_id}/recover")
+def recover_book(book_id: str, admin_user: dict = Depends(get_admin_user)):
     try:
         response = supabase.table("books").update({
             "status": "approved",
-            "approved_by": g.user["id"],
+            "approved_by": admin_user["id"],
             "approved_at": "now()",
             "rejection_reason": None
         }).eq("id", book_id).eq("status", "removed").execute()
@@ -237,6 +245,7 @@ def recover_book(book_id):
             return error_response("Only removed books can be recovered", 400)
 
         log_admin_action(
+            admin_user["id"],
             "recover_book",
             "book",
             book_id,
@@ -249,9 +258,8 @@ def recover_book(book_id):
         return error_response(str(e), 400)
 
 
-@admin_bp.route("/users", methods=["GET"])
-@admin_required
-def get_users():
+@router.get("/users")
+def get_users(admin_user: dict = Depends(get_admin_user)):
     try:
         response = supabase.table("profiles").select("*").order("created_at", desc=True).execute()
 
@@ -261,15 +269,15 @@ def get_users():
         return error_response(str(e), 400)
 
 
-@admin_bp.route("/users/<user_id>/deactivate", methods=["PUT"])
-@admin_required
-def deactivate_user(user_id):
+@router.put("/users/{user_id}/deactivate")
+def deactivate_user(user_id: str, admin_user: dict = Depends(get_admin_user)):
     try:
         response = supabase.table("profiles").update({
             "is_active": False
         }).eq("id", user_id).execute()
 
         log_admin_action(
+            admin_user["id"],
             "deactivate_user",
             "user",
             user_id,
@@ -282,21 +290,20 @@ def deactivate_user(user_id):
         return error_response(str(e), 400)
 
 
-@admin_bp.route("/categories", methods=["POST"])
-@admin_required
-def create_category():
+class CategoryData(BaseModel):
+    name: str
+    description: Optional[str] = None
+
+
+@router.post("/categories")
+def create_category(data: CategoryData, admin_user: dict = Depends(get_admin_user)):
     try:
-        data = request.get_json()
-
-        name = data.get("name")
-        description = data.get("description")
-
-        if not name:
+        if not data.name:
             return error_response("Category name is required", 400)
 
         response = supabase.table("categories").insert({
-            "name": name,
-            "description": description
+            "name": data.name,
+            "description": data.description
         }).execute()
 
         return success_response("Category created", response.data, 201)
@@ -305,19 +312,21 @@ def create_category():
         return error_response(str(e), 400)
 
 
-@admin_bp.route("/categories/<category_id>", methods=["PUT"])
-@admin_required
-def update_category(category_id):
-    try:
-        data = request.get_json()
+class UpdateCategoryData(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
 
+
+@router.put("/categories/{category_id}")
+def update_category(category_id: str, data: UpdateCategoryData, admin_user: dict = Depends(get_admin_user)):
+    try:
         update_data = {}
 
-        if "name" in data:
-            update_data["name"] = data["name"]
+        if data.name is not None:
+            update_data["name"] = data.name
 
-        if "description" in data:
-            update_data["description"] = data["description"]
+        if data.description is not None:
+            update_data["description"] = data.description
 
         response = supabase.table("categories").update(update_data).eq("id", category_id).execute()
 
@@ -327,9 +336,8 @@ def update_category(category_id):
         return error_response(str(e), 400)
 
 
-@admin_bp.route("/categories/<category_id>", methods=["DELETE"])
-@admin_required
-def delete_category(category_id):
+@router.delete("/categories/{category_id}")
+def delete_category(category_id: str, admin_user: dict = Depends(get_admin_user)):
     try:
         response = supabase.table("categories").delete().eq("id", category_id).execute()
 
@@ -339,9 +347,8 @@ def delete_category(category_id):
         return error_response(str(e), 400)
 
 
-@admin_bp.route("/book-requests", methods=["GET"])
-@admin_required
-def get_book_requests():
+@router.get("/book-requests")
+def get_book_requests(admin_user: dict = Depends(get_admin_user)):
     try:
         response = supabase.table("book_requests").select(
             "*, profiles(full_name, email), categories(name)"
@@ -353,24 +360,26 @@ def get_book_requests():
         return error_response(str(e), 400)
 
 
-@admin_bp.route("/book-requests/<request_id>/status", methods=["PUT"])
-@admin_required
-def update_book_request_status(request_id):
-    try:
-        data = request.get_json()
+class UpdateRequestStatusData(BaseModel):
+    status: str
 
-        status = data.get("status")
+
+@router.put("/book-requests/{request_id}/status")
+def update_book_request_status(request_id: str, data: UpdateRequestStatusData, admin_user: dict = Depends(get_admin_user)):
+    try:
+        status = data.status
 
         if status not in ["pending", "accepted", "fulfilled", "rejected"]:
             return error_response("Invalid request status", 400)
 
         response = supabase.table("book_requests").update({
             "status": status,
-            "handled_by": g.user["id"],
+            "handled_by": admin_user["id"],
             "handled_at": "now()"
         }).eq("id", request_id).execute()
 
         log_admin_action(
+            admin_user["id"],
             "update_book_request",
             "book_request",
             request_id,
@@ -383,9 +392,8 @@ def update_book_request_status(request_id):
         return error_response(str(e), 400)
 
 
-@admin_bp.route("/reviews", methods=["GET"])
-@admin_required
-def get_reviews():
+@router.get("/reviews")
+def get_reviews(admin_user: dict = Depends(get_admin_user)):
     try:
         response = supabase.table("reviews").select(
             "*, profiles(full_name, email), books(title)"
@@ -397,13 +405,13 @@ def get_reviews():
         return error_response(str(e), 400)
 
 
-@admin_bp.route("/reviews/<review_id>", methods=["DELETE"])
-@admin_required
-def admin_delete_review(review_id):
+@router.delete("/reviews/{review_id}")
+def admin_delete_review(review_id: str, admin_user: dict = Depends(get_admin_user)):
     try:
         response = supabase.table("reviews").delete().eq("id", review_id).execute()
 
         log_admin_action(
+            admin_user["id"],
             "delete_review",
             "review",
             review_id,
@@ -416,9 +424,8 @@ def admin_delete_review(review_id):
         return error_response(str(e), 400)
 
 
-@admin_bp.route("/comments", methods=["GET"])
-@admin_required
-def get_comments():
+@router.get("/comments")
+def get_comments(admin_user: dict = Depends(get_admin_user)):
     try:
         response = supabase.table("comments").select(
             "*, profiles(full_name, email), books(title)"
@@ -430,13 +437,13 @@ def get_comments():
         return error_response(str(e), 400)
 
 
-@admin_bp.route("/comments/<comment_id>", methods=["DELETE"])
-@admin_required
-def admin_delete_comment(comment_id):
+@router.delete("/comments/{comment_id}")
+def admin_delete_comment(comment_id: str, admin_user: dict = Depends(get_admin_user)):
     try:
         response = supabase.table("comments").delete().eq("id", comment_id).execute()
 
         log_admin_action(
+            admin_user["id"],
             "delete_comment",
             "comment",
             comment_id,
@@ -449,9 +456,8 @@ def admin_delete_comment(comment_id):
         return error_response(str(e), 400)
 
 
-@admin_bp.route("/reports", methods=["GET"])
-@admin_required
-def get_reports():
+@router.get("/reports")
+def get_reports(admin_user: dict = Depends(get_admin_user)):
     try:
         response = supabase.table("reports").select("*").order("created_at", desc=True).execute()
 
@@ -461,20 +467,21 @@ def get_reports():
         return error_response(str(e), 400)
 
 
-@admin_bp.route("/reports/<report_id>/status", methods=["PUT"])
-@admin_required
-def update_report_status(report_id):
-    try:
-        data = request.get_json()
+class ReportStatusData(BaseModel):
+    status: str
 
-        status = data.get("status")
+
+@router.put("/reports/{report_id}/status")
+def update_report_status(report_id: str, data: ReportStatusData, admin_user: dict = Depends(get_admin_user)):
+    try:
+        status = data.status
 
         if status not in ["pending", "reviewed", "resolved", "rejected"]:
             return error_response("Invalid report status", 400)
 
         response = supabase.table("reports").update({
             "status": status,
-            "handled_by": g.user["id"],
+            "handled_by": admin_user["id"],
             "handled_at": "now()"
         }).eq("id", report_id).execute()
 

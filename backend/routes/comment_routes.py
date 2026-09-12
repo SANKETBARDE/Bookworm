@@ -1,27 +1,31 @@
-from flask import Blueprint, request, g
+from fastapi import APIRouter, Depends
+from pydantic import BaseModel
 from services.supabase_client import supabase
-from utils.decorators import login_required
+from utils.dependencies import get_current_user
 from utils.helpers import success_response, error_response
 
-comment_bp = Blueprint("comments", __name__)
+router = APIRouter()
 
 
-@comment_bp.route("", methods=["POST"])
-@login_required
-def create_comment():
+class CommentData(BaseModel):
+    book_id: str
+    comment_text: str
+
+
+class UpdateCommentData(BaseModel):
+    comment_text: str
+
+
+@router.post("")
+def create_comment(data: CommentData, current_user: dict = Depends(get_current_user)):
     try:
-        data = request.get_json()
-
-        book_id = data.get("book_id")
-        comment_text = data.get("comment_text")
-
-        if not book_id or not comment_text:
+        if not data.book_id or not data.comment_text:
             return error_response("book_id and comment_text are required", 400)
 
         comment_data = {
-            "user_id": g.user["id"],
-            "book_id": book_id,
-            "comment_text": comment_text
+            "user_id": current_user["id"],
+            "book_id": data.book_id,
+            "comment_text": data.comment_text
         }
 
         response = supabase.table("comments").insert(comment_data).execute()
@@ -32,8 +36,8 @@ def create_comment():
         return error_response(str(e), 400)
 
 
-@comment_bp.route("/book/<book_id>", methods=["GET"])
-def get_book_comments(book_id):
+@router.get("/book/{book_id}")
+def get_book_comments(book_id: str):
     try:
         response = supabase.table("comments").select(
             "*, profiles(full_name, username, profile_image_url)"
@@ -45,20 +49,15 @@ def get_book_comments(book_id):
         return error_response(str(e), 400)
 
 
-@comment_bp.route("/<comment_id>", methods=["PUT"])
-@login_required
-def update_comment(comment_id):
+@router.put("/{comment_id}")
+def update_comment(comment_id: str, data: UpdateCommentData, current_user: dict = Depends(get_current_user)):
     try:
-        data = request.get_json()
-
-        comment_text = data.get("comment_text")
-
-        if not comment_text:
+        if not data.comment_text:
             return error_response("comment_text is required", 400)
 
         response = supabase.table("comments").update({
-            "comment_text": comment_text
-        }).eq("id", comment_id).eq("user_id", g.user["id"]).execute()
+            "comment_text": data.comment_text
+        }).eq("id", comment_id).eq("user_id", current_user["id"]).execute()
 
         return success_response("Comment updated", response.data)
 
@@ -66,11 +65,10 @@ def update_comment(comment_id):
         return error_response(str(e), 400)
 
 
-@comment_bp.route("/<comment_id>", methods=["DELETE"])
-@login_required
-def delete_comment(comment_id):
+@router.delete("/{comment_id}")
+def delete_comment(comment_id: str, current_user: dict = Depends(get_current_user)):
     try:
-        response = supabase.table("comments").delete().eq("id", comment_id).eq("user_id", g.user["id"]).execute()
+        response = supabase.table("comments").delete().eq("id", comment_id).eq("user_id", current_user["id"]).execute()
 
         return success_response("Comment deleted", response.data)
 

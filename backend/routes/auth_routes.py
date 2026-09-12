@@ -1,11 +1,13 @@
-from flask import Blueprint, request, g
+from fastapi import APIRouter, Request, Depends, HTTPException, UploadFile, File, Form
+from pydantic import BaseModel
+from typing import Optional
 from services.supabase_client import supabase
 from services.storage_service import upload_file_to_supabase
 from utils.helpers import success_response, error_response, get_nested_value, get_user_id_from_auth_user, get_user_email_from_auth_user
 from utils.validators import is_image, required_fields
-from utils.decorators import login_required
+from utils.dependencies import get_current_user
 
-auth_bp = Blueprint("auth", __name__)
+router = APIRouter()
 
 
 def is_email_confirmed(user):
@@ -15,19 +17,20 @@ def is_email_confirmed(user):
     )
 
 
-@auth_bp.route("/register", methods=["POST"])
-def register():
+class RegisterRequest(BaseModel):
+    full_name: str
+    email: str
+    password: str
+    username: Optional[str] = None
+
+
+@router.post("/register")
+def register(data: RegisterRequest):
     try:
-        data = request.get_json(silent=True) or {}
-
-        missing = required_fields(data, ["full_name", "email", "password"])
-        if missing:
-            return error_response(f"Missing fields: {', '.join(missing)}", 400)
-
-        full_name = data.get("full_name", "").strip()
-        username = data.get("username", "").strip() or None
-        email = data.get("email", "").strip().lower()
-        password = data.get("password")
+        full_name = data.full_name.strip()
+        username = data.username.strip() if data.username else None
+        email = data.email.strip().lower()
+        password = data.password
 
         if len(password) < 6:
             return error_response("Password must be at least 6 characters.", 400)
@@ -74,18 +77,17 @@ def register():
         return error_response(str(e), 400)
 
 
-@auth_bp.route("/login", methods=["POST"])
-def login():
+class LoginRequest(BaseModel):
+    email: str
+    password: str
+
+
+@router.post("/login")
+def login(data: LoginRequest):
     try:
-        data = request.get_json()
-
-        missing = required_fields(data, ["email", "password"])
-        if missing:
-            return error_response(f"Missing fields: {', '.join(missing)}", 400)
-
         response = supabase.auth.sign_in_with_password({
-            "email": data.get("email"),
-            "password": data.get("password")
+            "email": data.email,
+            "password": data.password
         })
 
         session = getattr(response, "session", None)
@@ -117,11 +119,14 @@ def login():
         return error_response(message, 401)
 
 
-@auth_bp.route("/refresh", methods=["POST"])
-def refresh_session():
+class RefreshRequest(BaseModel):
+    refresh_token: str
+
+
+@router.post("/refresh")
+def refresh_session(data: RefreshRequest):
     try:
-        data = request.get_json(silent=True) or {}
-        refresh_token = data.get("refresh_token")
+        refresh_token = data.refresh_token
 
         if not refresh_token:
             return error_response("Refresh token missing", 400)
@@ -166,17 +171,25 @@ def refresh_session():
         return error_response("Invalid or expired refresh token", 401)
 
 
-@auth_bp.route("/me", methods=["GET"])
-@login_required
-def me():
-    return success_response("Current user fetched", g.user)
+@router.get("/me")
+def me(current_user: dict = Depends(get_current_user)):
+    return success_response("Current user fetched", current_user)
 
 
-@auth_bp.route("/profile", methods=["PUT"])
-@login_required
-def update_profile():
+@router.put("/profile")
+async def update_profile(request: Request, current_user: dict = Depends(get_current_user)):
     try:
-        data = request.form if request.content_type and request.content_type.startswith("multipart/form-data") else request.get_json(silent=True) or {}
+        content_type = request.headers.get("content-type", "")
+        if "multipart/form-data" in content_type:
+            form_data = await request.form()
+            data = dict(form_data)
+            profile_image = form_data.get("profile_image")
+        else:
+            try:
+                data = await request.json()
+            except:
+                data = {}
+            profile_image = None
 
         allowed_fields = ["full_name", "username", "bio", "profile_image_url"]
         update_data = {}
@@ -184,11 +197,10 @@ def update_profile():
         for field in allowed_fields:
             if field in data:
                 value = data.get(field)
-                update_data[field] = value.strip() if isinstance(value, str) else value
+                if value is not None:
+                    update_data[field] = value.strip() if isinstance(value, str) else value
 
-        profile_image = request.files.get("profile_image")
-
-        if profile_image:
+        if profile_image and hasattr(profile_image, "filename") and profile_image.filename:
             if not is_image(profile_image.filename):
                 return error_response("Profile photo must be png, jpg, jpeg, or webp", 400)
 
@@ -206,8 +218,8 @@ def update_profile():
         if not update_data:
             return error_response("No valid fields to update", 400)
 
-        supabase.table("profiles").update(update_data).eq("id", g.user["id"]).execute()
-        response = supabase.table("profiles").select("*").eq("id", g.user["id"]).single().execute()
+        supabase.table("profiles").update(update_data).eq("id", current_user["id"]).execute()
+        response = supabase.table("profiles").select("*").eq("id", current_user["id"]).single().execute()
 
         return success_response("Profile updated successfully", response.data)
 

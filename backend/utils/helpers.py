@@ -1,4 +1,4 @@
-from flask import jsonify
+from fastapi import HTTPException
 
 
 def success_response(message, data=None, status_code=200):
@@ -10,14 +10,11 @@ def success_response(message, data=None, status_code=200):
     if data is not None:
         response["data"] = data
 
-    return jsonify(response), status_code
+    return response
 
 
 def error_response(message, status_code=400):
-    return jsonify({
-        "success": False,
-        "message": message
-    }), status_code
+    raise HTTPException(status_code=status_code, detail=message)
 
 
 def get_nested_value(obj, key, default=None):

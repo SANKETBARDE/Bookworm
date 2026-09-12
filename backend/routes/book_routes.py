@@ -1,13 +1,13 @@
 import re
-
-from flask import Blueprint, request, g
+from fastapi import APIRouter, Request, Depends, Form, UploadFile, File, Query
+from typing import Optional
 from services.supabase_client import supabase
 from services.storage_service import upload_file_to_supabase
-from utils.decorators import login_required
+from utils.dependencies import get_current_user
 from utils.helpers import success_response, error_response
 from utils.validators import is_pdf, is_image
 
-book_bp = Blueprint("books", __name__)
+router = APIRouter()
 
 
 def normalize_author_key(author):
@@ -49,14 +49,14 @@ def get_category_name(category_id):
     return category.get("name") if category else None
 
 
-@book_bp.route("", methods=["GET"])
-def get_books():
+@router.get("")
+def get_books(
+    search: Optional[str] = None,
+    category_id: Optional[str] = None,
+    language: Optional[str] = None,
+    sort: str = "newest"
+):
     try:
-        search = request.args.get("search")
-        category_id = request.args.get("category_id")
-        language = request.args.get("language")
-        sort = request.args.get("sort", "newest")
-
         query = supabase.table("approved_books_view").select("*")
 
         if search:
@@ -92,7 +92,7 @@ def get_books():
         return error_response(str(e), 400)
 
 
-@book_bp.route("/categories", methods=["GET"])
+@router.get("/categories")
 def get_categories():
     try:
         response = supabase.table("categories").select("*").order("name").execute()
@@ -101,7 +101,7 @@ def get_categories():
         return error_response(str(e), 400)
 
 
-@book_bp.route("/authors", methods=["GET"])
+@router.get("/authors")
 def get_authors():
     try:
         return success_response("Authors fetched successfully", get_author_names())
@@ -109,8 +109,8 @@ def get_authors():
         return error_response(str(e), 400)
 
 
-@book_bp.route("/<book_id>", methods=["GET"])
-def get_book(book_id):
+@router.get("/{book_id}")
+def get_book(book_id: str):
     try:
         response = supabase.table("books").select(
             "*, categories(name), profiles!books_uploaded_by_fkey(full_name, username, profile_image_url)"
@@ -130,24 +130,28 @@ def get_book(book_id):
         return error_response(str(e), 404)
 
 
-@book_bp.route("/upload", methods=["POST"])
-@login_required
-def upload_book():
+@router.post("/upload")
+async def upload_book(
+    request: Request,
+    current_user: dict = Depends(get_current_user)
+):
     try:
-        title = (request.form.get("title") or "").strip()
-        author = canonical_author_name(request.form.get("author"))
-        category_id = request.form.get("category_id")
-        language = request.form.get("language", "English")
-        description = request.form.get("description")
-        tags_raw = request.form.get("tags", "")
+        form_data = await request.form()
+        
+        title = (form_data.get("title") or "").strip()
+        author = canonical_author_name(form_data.get("author"))
+        category_id = form_data.get("category_id")
+        language = form_data.get("language", "English")
+        description = form_data.get("description")
+        tags_raw = form_data.get("tags", "")
 
-        pdf_file = request.files.get("pdf")
-        cover_file = request.files.get("cover")
+        pdf_file = form_data.get("pdf")
+        cover_file = form_data.get("cover")
 
         if not title:
             return error_response("Book title is required", 400)
 
-        if not pdf_file:
+        if not pdf_file or not hasattr(pdf_file, "filename") or not pdf_file.filename:
             return error_response("PDF file is required", 400)
 
         if not is_pdf(pdf_file.filename):
@@ -164,7 +168,7 @@ def upload_book():
 
         cover_url = None
 
-        if cover_file:
+        if cover_file and hasattr(cover_file, "filename") and cover_file.filename:
             if not is_image(cover_file.filename):
                 return error_response("Cover must be png, jpg, jpeg, or webp", 400)
 
@@ -190,7 +194,7 @@ def upload_book():
             "tags": tags,
             "pdf_url": pdf_upload["url"],
             "cover_image_url": cover_url,
-            "uploaded_by": g.user["id"],
+            "uploaded_by": current_user["id"],
             "status": "pending"
         }
 
@@ -206,11 +210,10 @@ def upload_book():
         return error_response(str(e), 400)
 
 
-@book_bp.route("/my-uploads", methods=["GET"])
-@login_required
-def my_uploads():
+@router.get("/my-uploads")
+def my_uploads(current_user: dict = Depends(get_current_user)):
     try:
-        response = supabase.table("books").select("*").eq("uploaded_by", g.user["id"]).order("created_at", desc=True).execute()
+        response = supabase.table("books").select("*").eq("uploaded_by", current_user["id"]).order("created_at", desc=True).execute()
 
         return success_response("My uploads fetched successfully", response.data)
 
@@ -218,8 +221,8 @@ def my_uploads():
         return error_response(str(e), 400)
 
 
-@book_bp.route("/<book_id>/read-count", methods=["POST"])
-def increase_read_count(book_id):
+@router.post("/{book_id}/read-count")
+def increase_read_count(book_id: str):
     try:
         book_response = supabase.table("books").select("read_count").eq("id", book_id).single().execute()
 
@@ -235,8 +238,8 @@ def increase_read_count(book_id):
         return error_response(str(e), 400)
 
 
-@book_bp.route("/<book_id>/download-count", methods=["POST"])
-def increase_download_count(book_id):
+@router.post("/{book_id}/download-count")
+def increase_download_count(book_id: str):
     try:
         book_response = supabase.table("books").select("download_count").eq("id", book_id).single().execute()
 

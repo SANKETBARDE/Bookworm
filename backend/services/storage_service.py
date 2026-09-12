@@ -1,11 +1,17 @@
 import os
 import uuid
-from werkzeug.utils import secure_filename
+import re
 from services.supabase_client import supabase
 
 
 def get_file_extension(filename):
     return filename.rsplit(".", 1)[1].lower() if "." in filename else ""
+
+
+def secure_filename(filename: str) -> str:
+    # simple replacement for werkzeug's secure_filename
+    filename = re.sub(r'[^a-zA-Z0-9_.-]', '_', filename)
+    return filename
 
 
 def generate_unique_filename(filename):

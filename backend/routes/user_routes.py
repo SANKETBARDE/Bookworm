@@ -1,12 +1,12 @@
-from flask import Blueprint
+from fastapi import APIRouter
 from services.supabase_client import supabase
 from utils.helpers import success_response, error_response
 
-user_bp = Blueprint("users", __name__)
+router = APIRouter()
 
 
-@user_bp.route("/<user_id>/profile", methods=["GET"])
-def public_profile(user_id):
+@router.get("/{user_id}/profile")
+def public_profile(user_id: str):
     try:
         profile_response = supabase.table("profiles").select(
             "id, full_name, username, bio, profile_image_url, created_at"
